@@ -1,41 +1,61 @@
+import asyncio
 import os
 
 from dotenv import load_dotenv
-from twitchio.ext import commands
+from twitchAPI.chat import ChatMessage, Chat, ChatCommand
+from twitchAPI.oauth import UserAuthenticationStorageHelper
+from twitchAPI.twitch import Twitch
+from twitchAPI.type import AuthScope, ChatEvent
+
+load_dotenv()
+
+APP_ID = os.getenv('APP_ID')
+APP_SECRET = os.getenv('APP_SECRET')
+USER_SCOPE = [AuthScope.CHAT_READ, AuthScope.CHAT_EDIT]
 
 
-class Bot(commands.Bot):
-    load_dotenv()
-
-    def __init__(self):
-        # Initialise our Bot with our access token, prefix and a list of channels to join on boot...
-        # prefix can be a callable, which returns a list of strings or a string...
-        # initial_channels can also be a callable which returns a list of strings...
-        super().__init__(token=os.getenv('TOKEN'), prefix='?', initial_channels=['viertelwissen'])
-
-    async def event_ready(self):
-        # Notify us when everything is ready!
-        # We are logged in and ready to chat and use commands...
-        print(f'Logged in as | {self.nick}')
-        print(f'User id is | {self.user_id}')
-
-    async def event_message(self, message):
-        # Messages with echo set to True are messages sent by the bot...
-        # For now we just want to ignore them...
-        if message.echo:
-            print(f'Nachricht vom Bot {message.content}!')
-            return
-
-        # Print the contents of our message to console...
-        print(f'{message.author.display_name}: {message.content}')
-        # Since we have commands and are overriding the default `event_message`
-        # We must let the bot know we want to handle and invoke our commands...
-
-        if message.content.startswith('?'):
-            print("Befehl ausgelöst!")
-
-        await self.handle_commands(message)
+async def on_message(msg: ChatMessage):
+    print(f'in {msg.room.name}, {msg.user.name} said: {msg.text}')
 
 
-bot = Bot()
-bot.run()
+async def bla_command(cmd: ChatCommand):
+    print("Command ausgelöst!")
+    await cmd.send("YES MOIN! -> " + cmd.parameter)
+
+
+async def run():
+    twitch = await Twitch(APP_ID, APP_SECRET)
+    helper = UserAuthenticationStorageHelper(twitch, USER_SCOPE)
+    await helper.bind()
+    # do things
+
+    # create chat instance
+    chat = await Chat(twitch, initial_channel=["viertelwissen", "dreiviertelwissen"])
+
+    # register the handlers for the events you want
+
+    # listen to when the bot is done starting up and ready to join channels
+    # chat.register_event(ChatEvent.READY, on_ready)
+    # listen to chat messages
+    chat.register_event(ChatEvent.MESSAGE, on_message)
+
+    # listen to channel subscriptions
+    # chat.register_event(ChatEvent.SUB, on_sub)
+    # there are more events, you can view them all in this documentation
+
+    # you can directly register commands and their handlers, this will register the !reply command
+    chat.register_command('bla', bla_command)
+
+    # we are done with our setup, lets start this bot up!
+    chat.start()
+
+    # lets run till we press enter in the console
+    try:
+        input('press ENTER to stop\\n')
+    finally:
+        # now we can close the chat bot and the twitch api client
+        chat.stop()
+        await twitch.close()
+
+# lets run our setup
+asyncio.run(run())
